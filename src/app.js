@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { json } from 'express';
 import cors from 'cors';
 import pg from 'pg';
 
@@ -15,8 +15,8 @@ const connection = new Pool({
     port: 5432,
     database: 'boardcamp'
 });
-const namesObj = await connection.query('SELECT (name) FROM categories');
-const namesArr = namesObj.rows.map(({name}) => name);
+const categories = await connection.query('SELECT * FROM categories');
+const namesArr = categories.rows.map(({name}) => name);
 
 app.get('/categories', (req, res) => {
     connection.query('SELECT * FROM categories;')
@@ -34,6 +34,33 @@ app.post('/categories', (req, res) => {
         .catch(e => res.sendStatus(400));
     }
 })
+
+app.get('/games', (req, res) => {
+    connection.query('SELECT * FROM games;')
+        .then(r => res.send(r.rows))
+})
+
+
+const handleCategoryGame = (categoryID) => {
+    return categories.rows.filter(({id}) => id === categoryID)[0].name;
+}
+
+app.post('/games', (req, res) => {
+
+    const {
+        name,
+        image,
+        stockTotal,
+        categoryId,
+        pricePerDay
+    } = req.body
+
+    const categoryName = handleCategoryGame(categoryId);
+
+    connection.query('INSERT INTO games (name, image, stockTotal, categoryId, pricePerDay, categoryName) VALUES ($1, $2, $3, $4, $5, $6);', [name, image, stockTotal, categoryId, pricePerDay, categoryName])
+        .then(r => res.send(r.rows[0]));
+})
+
 
 app.listen(4000, () => {
     console.log('Server listening on port 4000.');
