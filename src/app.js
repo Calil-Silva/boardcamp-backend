@@ -1,6 +1,7 @@
 import express, { json } from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import joi from 'joi';
 
 const app = express();
 const { Pool } = pg;
@@ -16,7 +17,15 @@ const connection = new Pool({
     database: 'boardcamp'
 });
 const categories = await connection.query('SELECT * FROM categories');
-const namesArr = categories.rows.map(({name}) => name);
+const namesArr = categories.rows.map(({ name }) => name);
+const idsArr = categories.rows.map(({ id }) => id);
+const gamesSchema = joi.object({
+    name: joi.string(),
+    image: joi.string(),
+    stockTotal: joi.number().min(1),
+    categoryId: joi.number(),
+    pricePerDay: joi.number().min(1)
+})
 
 app.get('/categories', (req, res) => {
     connection.query('SELECT * FROM categories;')
@@ -30,22 +39,35 @@ app.post('/categories', (req, res) => {
         res.sendStatus(400)
     } else {
         connection.query('INSERT INTO categories (name) VALUES ($1);', [name])
-        .then(r => res.sendStatus(201))
-        .catch(e => res.sendStatus(400));
+            .then(r => res.sendStatus(201))
+            .catch(e => res.sendStatus(400));
     }
 })
 
-app.get('/games', (req, res) => {
-    connection.query('SELECT * FROM games;')
-        .then(r => res.send(r.rows))
-})
-
-
 const handleCategoryGame = (categoryID) => {
-    return categories.rows.filter(({id}) => id === categoryID)[0].name;
+    return categories.rows.filter(({ id }) => id === categoryID)[0].name;
 }
 
-app.post('/games', (req, res) => {
+app.get('/games', (req, res) => {
+
+    const filterParam = req.query.name;
+
+    if (filterParam) {
+        connection.query('SELECT * FROM games;')
+            .then(r => res.send(
+                r.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId) }))
+                    .filter(g => g.name.slice(0, filterParam.length).toLowerCase() === filterParam.toLowerCase())
+            ))
+    } else {
+        connection.query('SELECT * FROM games;')
+            .then(r => res.send(
+                r.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId) }),
+                )))
+    }
+
+})
+
+app.post('/games', async (req, res) => {
 
     const {
         name,
@@ -55,10 +77,20 @@ app.post('/games', (req, res) => {
         pricePerDay
     } = req.body
 
-    const categoryName = handleCategoryGame(categoryId);
+    const { error } = gamesSchema.validate(req.body);
 
-    connection.query('INSERT INTO games (name, image, stockTotal, categoryId, pricePerDay, categoryName) VALUES ($1, $2, $3, $4, $5, $6);', [name, image, stockTotal, categoryId, pricePerDay, categoryName])
-        .then(r => res.send(r.rows[0]));
+    const games = await connection.query('SELECT (name) FROM games;');
+    const handleGamesName = games.rows.map(g => g.name);
+
+    if (!idsArr.includes(categoryId) || error) {
+        res.sendStatus(400);
+    } else if (handleGamesName.includes(name)) {
+        res.sendStatus(409);
+    } else {
+        connection.query(`INSERT INTO games (name, image, "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5);`,
+            [name, image, stockTotal, categoryId, pricePerDay])
+                .then(() => res.sendStatus(201))
+    }
 })
 
 
