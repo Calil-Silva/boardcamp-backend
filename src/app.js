@@ -106,7 +106,6 @@ app.get('/customers/:id', async (req, res) => {
     const id = +req.params.id;
     const customersArr = await connection.query('SELECT (id) FROM customers');
     const customersIdsArr = customersArr.rows.map(({id}) => id);
-    console.log(customersIdsArr, id)
 
         if(customersIdsArr.includes(id)) {
             const customers = await connection.query('SELECT * FROM customers WHERE id = $1', [id]);
@@ -144,6 +143,39 @@ app.post('/customers', async (req, res) => {
         res.sendStatus(201);
     }
 })
+
+app.put('/customers/:id', async (req, res) => {
+    const {
+        name,
+        phone,
+        cpf,
+        birthday
+    } = req.body;
+    const id = +req.params.id;
+    const customersSchema = joi.object({
+        name: joi.string(),
+        phone: joi.string().pattern(/^([0-9]{11})|([0-9]{10})$/),
+        cpf: joi.string().pattern(/^[0-9]{11}$/),
+        birthday: joi.string().pattern(/^\d{2}[./-]\d{2}[./-]\d{4}$/)
+    });
+    const { error } = customersSchema.validate(req.body);
+    const promise = await connection.query('SELECT * FROM customers WHERE id <> $1;', [id]); 
+    const customersCPF = promise.rows.map(c => c.cpf);
+
+    try {
+        if(error) {
+            res.sendStatus(400)
+        } else if(customersCPF.includes(cpf)) {
+            res.sendStatus(409);
+        } else {
+            await connection.query(`UPDATE customers SET name = '${name}', phone = '${phone}', cpf = '${cpf}', birthday = '${birthday}' WHERE id = '${id}';`);
+            res.sendStatus(200);
+        }
+    } catch {
+        res.sendStatus(400);
+    }
+
+});
 
 app.listen(4000, () => {
     console.log('Server listening on port 4000.');
