@@ -174,8 +174,40 @@ app.put('/customers/:id', async (req, res) => {
     } catch {
         res.sendStatus(400);
     }
-
 });
+
+app.get('/rentals', async (req, res) => {
+    res.send('Oie')
+})
+
+app.post('/rentals', async (req, res) => {
+    const {
+        customerId,
+        gameId,
+        daysRented
+      } = req.body;
+
+    const rentDate = new Date().toLocaleDateString('pt-br');
+    const handleObjGame = await connection.query('SELECT * FROM games where id = $1;', [gameId]);
+    const pricePerDay = handleObjGame.rows[0].pricePerDay;
+    const stockTotal = handleObjGame.rows[0].stockTotal;
+    const id = handleObjGame.rows[0].id;
+    const originalPrice = pricePerDay*daysRented;
+    const handleObjCustomersId = await connection.query('SELECT id FROM customers;');
+    const customersIds = handleObjCustomersId.rows.map(({id}) => id)
+
+    try {
+        if(!customersIds.includes(customerId) || /^[0]$/.test(daysRented) || stockTotal === 0) {
+            res.sendStatus(400);
+        } else {
+            await connection.query('INSERT INTO rentals ("customerId", "gameId", "daysRented", "rentDate", "originalPrice") VALUES ($1, $2, $3);', 
+                [customerId, gameId, daysRented, rentDate, originalPrice]);
+            res.sendStatus(201);
+        }
+    } catch (error) {
+        res.sendStatus(400);
+    }
+})
 
 app.listen(4000, () => {
     console.log('Server listening on port 4000.');
