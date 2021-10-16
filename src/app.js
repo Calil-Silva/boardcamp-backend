@@ -177,7 +177,12 @@ app.put('/customers/:id', async (req, res) => {
 });
 
 app.get('/rentals', async (req, res) => {
-    res.send('Oie')
+    try {
+        const promise = await connection.query('SELECT * FROM rentals;');
+        res.send(promise.rows)
+    } catch (error) {
+        res.sendStatus(400);
+    }
 })
 
 app.post('/rentals', async (req, res) => {
@@ -200,11 +205,12 @@ app.post('/rentals', async (req, res) => {
         if(!customersIds.includes(customerId) || /^[0]$/.test(daysRented) || stockTotal === 0) {
             res.sendStatus(400);
         } else {
-            await connection.query('INSERT INTO rentals ("customerId", "gameId", "daysRented", "rentDate", "originalPrice") VALUES ($1, $2, $3);', 
+            await connection.query('INSERT INTO rentals ("customerId", "gameId", "daysRented", "rentDate", "originalPrice") VALUES ($1, $2, $3, $4, $5);', 
                 [customerId, gameId, daysRented, rentDate, originalPrice]);
             res.sendStatus(201);
         }
     } catch (error) {
+        console.log(error)
         res.sendStatus(400);
     }
 })
