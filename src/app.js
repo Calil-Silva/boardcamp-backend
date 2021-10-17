@@ -289,9 +289,61 @@ app.post('/rentals', async (req, res) => {
             res.sendStatus(201);
         }
     } catch (error) {
-        console.log(error)
         res.sendStatus(400);
     }
+})
+
+app.post('/rentals/:id/return', async (req, res) => {
+    const { id } = req.params;
+    const handleObjRentalId = await connection.query('SELECT id FROM rentals WHERE id = $1;', [id]);
+    const handleObjRentalReturnDate = await connection.query('SELECT "returnDate"  FROM rentals WHERE id = $1;', [id]);
+    const rentalId = handleObjRentalId.rows;
+    const { returnDate } = handleObjRentalReturnDate.rows[0];
+
+    if(rentalId.length === 0) {
+        res.sendStatus(404);
+    } else if (returnDate !== null) {
+        res.sendStatus(400);
+    }
+
+    const dayReturned = new Date().toLocaleDateString('pt-br');
+    const handleObjPricePerDay = await connection.query('SELECT "pricePerDay" FROM games WHERE id = $1;', [id]);
+    const pricePerDay = handleObjPricePerDay.rows[0].pricePerDay;
+
+    try {
+        await connection.query(
+            `UPDATE 
+                rentals SET "returnDate" = $1, "delayFee" = ($1 - "rentDate" - "daysRented") * $3 
+             WHERE 
+                id = $2;`, [dayReturned, id, pricePerDay]
+        );
+        res.sendStatus(200);
+    } catch (error) {
+        res.sendStatus(400);
+    }
+})
+
+app.delete('/rentals/:id', async (req, res) => {
+    const { id } = req.params;
+    const handleObjRentalId = await connection.query('SELECT id FROM rentals WHERE id = $1;', [id]);
+    const handleObjRentalReturnDate = await connection.query('SELECT "returnDate"  FROM rentals WHERE id = $1;', [id]);
+    const rentalId = handleObjRentalId.rows;
+    const { returnDate } = handleObjRentalReturnDate.rows[0];
+
+    if(rentalId.length === 0) {
+        res.sendStatus(404);
+    } else if (returnDate !== null) {
+        res.sendStatus(400);
+    } 
+
+    try {
+        await connection.query('DELETE FROM rentals WHERE id = $1;', [id]);
+        res.sendStatus(200);
+    } catch (error) {
+        res.sendStatus(400);
+    }
+
+    res.sendStatus(200);
 })
 
 app.listen(4000, () => {
