@@ -342,8 +342,6 @@ app.delete('/rentals/:id', async (req, res) => {
     } catch (error) {
         res.sendStatus(400);
     }
-
-    res.sendStatus(200);
 })
 
 app.listen(4000, () => {
