@@ -273,7 +273,7 @@ app.get('/rentals', async (req, res) => {
             rentDate: new Date(r.rentDate).toLocaleDateString('pt-br'),
             returnDate: r.returnDate && new Date(r.returnDate).toLocaleDateString('pt-br'),
             originalPrice: r.originalPrice.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}),
-            delayFee: r.delayFee && r.delayFee.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}),
+            delayFee: r.delayFee > 0 ? r.delayFee.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) : null,
             customer: {
                 id: r.cid,
                 name: r.cname
@@ -310,7 +310,6 @@ app.post('/rentals', async (req, res) => {
     const handleObjGame = await connection.query('SELECT * FROM games where id = $1;', [gameId]);
     const pricePerDay = handleObjGame.rows[0].pricePerDay;
     const stockTotal = handleObjGame.rows[0].stockTotal;
-    const id = handleObjGame.rows[0].id;
     const originalPrice = pricePerDay * daysRented;
     const handleObjCustomersId = await connection.query('SELECT id FROM customers;');
     const customersIds = handleObjCustomersId.rows.map(({ id }) => id)
@@ -331,7 +330,7 @@ app.post('/rentals', async (req, res) => {
 app.post('/rentals/:id/return', async (req, res) => {
     const { id } = req.params;
     const handleObjRentalId = await connection.query('SELECT id FROM rentals WHERE id = $1;', [id]);
-    const handleObjRentalReturnDate = await connection.query('SELECT "returnDate"  FROM rentals WHERE id = $1;', [id]);
+    const handleObjRentalReturnDate = await connection.query('SELECT "returnDate" FROM rentals WHERE id = $1;', [id]);
     const rentalId = handleObjRentalId.rows;
     const { returnDate } = handleObjRentalReturnDate.rows[0];
 
@@ -342,7 +341,15 @@ app.post('/rentals/:id/return', async (req, res) => {
     }
 
     const dayReturned = new Date().toLocaleDateString('pt-br');
-    const handleObjPricePerDay = await connection.query('SELECT "pricePerDay" FROM games WHERE id = $1;', [id]);
+    const handleObjPricePerDay = await connection.query(
+        `SELECT 
+            games."pricePerDay" 
+         FROM 
+            rentals
+         JOIN
+            games ON rentals."gameId" = games.id
+         WHERE 
+            rentals.id = $1;`, [id]);
     const pricePerDay = handleObjPricePerDay.rows[0].pricePerDay;
 
     try {
