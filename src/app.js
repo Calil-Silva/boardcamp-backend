@@ -18,9 +18,11 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/categories', async (req, res) => {
+    const { offset } = req.query;
+
     try {
         const promise = await connection.query('SELECT * FROM categories;')
-        res.send(promise.rows)
+        res.send(promise.rows).slice(-(promise.rows.length - offset))
     } catch (error) {
         res.sendStatus(500);
     }
@@ -46,6 +48,7 @@ app.post('/categories', async (req, res) => {
 
 app.get('/games', async (req, res) => {
     const filterParam = req.query.name;
+    const { offset } = req.query;
     const categories = await connection.query('SELECT * FROM categories');
     const handleCategoryGame = (categoryID) => {
         return categories.rows.filter(({ id }) => id === categoryID)[0].name;
@@ -53,16 +56,26 @@ app.get('/games', async (req, res) => {
 
     try {
         if (filterParam) {
-            const promise = await connection.query('SELECT * FROM games;');
+            const promise = await connection.query('SELECT * FROM games WHERE name iLIKE $1;', [filterParam + '%']);
             res.send(
-                    promise.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId), pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) }))
-                        .filter(g => g.name.slice(0, filterParam.length).toLowerCase() === filterParam.toLowerCase())
+                    promise.rows.map(g => (
+                        { 
+                            ...g, 
+                            categoryName: handleCategoryGame(g.categoryId), 
+                            pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) 
+                        }
+                    )).slice(-(promise.rows.length - offset))
             );
         } else {
             const promise = await connection.query('SELECT * FROM games;');
                 res.send(
-                    promise.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId), pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) }),
-                    )
+                    promise.rows.map(g => (
+                        { 
+                            ...g, 
+                            categoryName: handleCategoryGame(g.categoryId), 
+                            pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) 
+                        }
+                        )).slice(-(promise.rows.length - offset))
                 );
         }
     } catch (error) {
@@ -107,11 +120,11 @@ app.post('/games', async (req, res) => {
 })
 
 app.get('/customers', async (req, res) => {
-    const { cpf } = req.query;
+    const { cpf, offset } = req.query;
 
     try {
         if (cpf) {
-            const promise = await connection.query(`SELECT * FROM customers WHERE cpf LIKE '${cpf}%';`);
+            const promise = await connection.query(`SELECT * FROM customers WHERE cpf LIKE $1;`, [cpf + '%']);
             const customers = promise.rows.map(c => ({
                 ...c,
                 birthday: new Date(c.birthday).toLocaleDateString('pt-br')
@@ -124,7 +137,7 @@ app.get('/customers', async (req, res) => {
                 ...c,
                 birthday: new Date(c.birthday).toLocaleDateString('pt-br')
             }))
-            res.send(customers);
+            res.send(customers.slice(-(customers.length - offset)));
         }
     } catch (error) {
         res.sendStatus(500);
@@ -196,20 +209,23 @@ app.put('/customers/:id', async (req, res) => {
 
     try {
         if (error) {
+            console.log(error)
             res.sendStatus(400)
         } else if (customersCPF.includes(cpf)) {
             res.sendStatus(409);
         } else {
-            await connection.query(`UPDATE customers SET name = '${name}', phone = '${phone}', cpf = '${cpf}', birthday = '${birthday}' WHERE id = '${id}';`);
+            await connection.query(`UPDATE customers SET name = $1, phone = $2, cpf = $3, birthday = $4 WHERE id = $5;`, 
+            [name, phone, cpf, birthday, id]
+            );
             res.sendStatus(200);
         }
     } catch {
-        res.sendStatus(400);
+        res.sendStatus(500);
     }
 });
 
 app.get('/rentals', async (req, res) => {
-    const { customerId, gameId } = req.query;
+    const { customerId, gameId, offset } = req.query;
     let promise;
 
     try {
@@ -284,7 +300,7 @@ app.get('/rentals', async (req, res) => {
                 categoryId: r.categoryId,
                 categoryName: r.categoryName
             }
-        }));
+        })).slice(-(promise.rows.length - offset));
         response.forEach(r => {
             delete r.cid;
             delete r.gid;
