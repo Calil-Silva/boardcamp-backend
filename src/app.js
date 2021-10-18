@@ -12,51 +12,62 @@ const connection = new Pool({
     port: 5432,
     database: 'boardcamp'
 });
-const categories = await connection.query('SELECT * FROM categories');
-const namesArr = categories.rows.map(({ name }) => name);
-const idsArr = categories.rows.map(({ id }) => id);
 
 app.use(cors());
 
 app.use(express.json());
 
-app.get('/categories', (req, res) => {
-    connection.query('SELECT * FROM categories;')
-        .then(r => res.send(r.rows))
-})
-
-app.post('/categories', (req, res) => {
-    const name = req.body.name;
-
-    if (name === '' || namesArr.includes(name)) {
-        res.sendStatus(400)
-    } else {
-        connection.query('INSERT INTO categories (name) VALUES ($1);', [name])
-            .then(r => res.sendStatus(201))
-            .catch(e => res.sendStatus(400));
+app.get('/categories', async (req, res) => {
+    try {
+        const promise = await connection.query('SELECT * FROM categories;')
+        res.send(promise.rows)
+    } catch (error) {
+        res.sendStatus(500);
     }
 })
 
-app.get('/games', (req, res) => {
+app.post('/categories', async (req, res) => {
+    const name = req.body.name;
+
+    try {
+        const categories = await connection.query('SELECT * FROM categories');
+        const namesArr = categories.rows.map(({ name }) => name);
+    
+        if (name === '' || namesArr.includes(name)) {
+            res.sendStatus(400)
+        } else {
+            await connection.query('INSERT INTO categories (name) VALUES ($1);', [name])
+            res.sendStatus(201);
+        }
+    } catch (error) {
+        res.sendStatus(500);
+    }
+})
+
+app.get('/games', async (req, res) => {
     const filterParam = req.query.name;
+    const categories = await connection.query('SELECT * FROM categories');
     const handleCategoryGame = (categoryID) => {
         return categories.rows.filter(({ id }) => id === categoryID)[0].name;
     }
 
-    if (filterParam) {
-        connection.query('SELECT * FROM games;')
-            .then(r => res.send(
-                r.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId) }))
-                    .filter(g => g.name.slice(0, filterParam.length).toLowerCase() === filterParam.toLowerCase())
-            ))
-    } else {
-        connection.query('SELECT * FROM games;')
-            .then(r => res.send(
-                r.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId) }),
-                )
-            ))
+    try {
+        if (filterParam) {
+            const promise = await connection.query('SELECT * FROM games;');
+            res.send(
+                    promise.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId), pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) }))
+                        .filter(g => g.name.slice(0, filterParam.length).toLowerCase() === filterParam.toLowerCase())
+            );
+        } else {
+            const promise = await connection.query('SELECT * FROM games;');
+                res.send(
+                    promise.rows.map(g => ({ ...g, categoryName: handleCategoryGame(g.categoryId), pricePerDay: g.pricePerDay.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}) }),
+                    )
+                );
+        }
+    } catch (error) {
+        res.sendStatus(500);
     }
-
 })
 
 app.post('/games', async (req, res) => {
@@ -77,29 +88,47 @@ app.post('/games', async (req, res) => {
     const { error } = gamesSchema.validate(req.body);
     const games = await connection.query('SELECT (name) FROM games;');
     const handleGamesName = games.rows.map(g => g.name);
+    const categories = await connection.query('SELECT * FROM categories');
+    const idsArr = categories.rows.map(({ id }) => id);
 
-    if (!idsArr.includes(categoryId) || error) {
-        res.sendStatus(400);
-    } else if (handleGamesName.includes(name)) {
-        res.sendStatus(409);
-    } else {
-        connection.query(`INSERT INTO games (name, image, "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5);`,
-            [name, image, stockTotal, categoryId, pricePerDay])
-            .then(() => res.sendStatus(201));
+    try {
+        if (!idsArr.includes(categoryId) || error) {
+            res.sendStatus(400);
+        } else if (handleGamesName.includes(name)) {
+            res.sendStatus(409);
+        } else {
+            await connection.query(`INSERT INTO games (name, image, "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5);`,
+                [name, image, stockTotal, categoryId, pricePerDay]);
+            res.sendStatus(201);
+        }
+    } catch (error) {
+        res.sendStatus(500);
     }
 })
 
 app.get('/customers', async (req, res) => {
     const { cpf } = req.query;
 
-    if (cpf) {
-        const promise = await connection.query(`SELECT * FROM customers WHERE cpf LIKE '${cpf}%';`);
-        res.send(promise.rows);
-    } else {
-        const promise = await connection.query('SELECT * FROM customers;');
-        res.send(promise.rows);
+    try {
+        if (cpf) {
+            const promise = await connection.query(`SELECT * FROM customers WHERE cpf LIKE '${cpf}%';`);
+            const customers = promise.rows.map(c => ({
+                ...c,
+                birthday: new Date(c.birthday).toLocaleDateString('pt-br')
+            }))
+    
+            res.send(customers);
+        } else {
+            const promise = await connection.query('SELECT * FROM customers;');
+            const customers = promise.rows.map(c => ({
+                ...c,
+                birthday: new Date(c.birthday).toLocaleDateString('pt-br')
+            }))
+            res.send(customers);
+        }
+    } catch (error) {
+        res.sendStatus(500);
     }
-
 })
 
 app.get('/customers/:id', async (req, res) => {
@@ -108,12 +137,15 @@ app.get('/customers/:id', async (req, res) => {
     const customersIdsArr = customersArr.rows.map(({ id }) => id);
 
     if (customersIdsArr.includes(id)) {
-        const customers = await connection.query('SELECT * FROM customers WHERE id = $1', [id]);
-        res.send(customers.rows[0]);
+        const promise = await connection.query('SELECT * FROM customers WHERE id = $1', [id]);
+        const customers = promise.rows.map(c => ({
+            ...c,
+            birthday: new Date(c.birthday).toLocaleDateString('pt-br')
+        }))
+        res.send(customers);
     } else {
         res.sendStatus(404);
     }
-
 })
 
 app.post('/customers', async (req, res) => {
@@ -239,6 +271,9 @@ app.get('/rentals', async (req, res) => {
         const response = promise.rows.map(r => ({
             ...r,
             rentDate: new Date(r.rentDate).toLocaleDateString('pt-br'),
+            returnDate: r.returnDate && new Date(r.returnDate).toLocaleDateString('pt-br'),
+            originalPrice: r.originalPrice.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}),
+            delayFee: r.delayFee && r.delayFee.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'}),
             customer: {
                 id: r.cid,
                 name: r.cname
